@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -55,6 +56,8 @@ public class InsertRowsOfOneDevicePlan extends InsertPlan implements BatchPlan {
 
   /** record the result of insert rows */
   private Map<Integer, TSStatus> results = new HashMap<>();
+
+  private List<PartialPath> paths;
 
   public InsertRowsOfOneDevicePlan() {
     super(OperatorType.BATCH_INSERT_ONE_DEVICE);
@@ -111,11 +114,15 @@ public class InsertRowsOfOneDevicePlan extends InsertPlan implements BatchPlan {
 
   @Override
   public List<PartialPath> getPaths() {
-    Set<PartialPath> paths = new HashSet<>();
-    for (InsertRowPlan plan : rowPlans) {
-      paths.addAll(plan.getPaths());
+    if (paths != null) {
+      return paths;
     }
-    return new ArrayList<>(paths);
+    Set<PartialPath> pathSet = new HashSet<>();
+    for (InsertRowPlan plan : rowPlans) {
+      pathSet.addAll(plan.getPaths());
+    }
+    paths = new ArrayList<>(pathSet);
+    return paths;
   }
 
   @Override
@@ -228,6 +235,11 @@ public class InsertRowsOfOneDevicePlan extends InsertPlan implements BatchPlan {
 
   public Map<Integer, TSStatus> getResults() {
     return results;
+  }
+
+  @Override
+  public List<PartialPath> getPrefixPaths() {
+    return Collections.singletonList(this.deviceId);
   }
 
   @Override
