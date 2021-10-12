@@ -1284,7 +1284,7 @@
                     <plugin>
                         <groupId>net.nicoulaj.maven.plugins</groupId>
                         <artifactId>checksum-maven-plugin</artifactId>
-                        <version>1.8</version>
+                        <version>1.11</version>
                         <executions>
                             <execution>
                                 <id>sign-source-release</id>
