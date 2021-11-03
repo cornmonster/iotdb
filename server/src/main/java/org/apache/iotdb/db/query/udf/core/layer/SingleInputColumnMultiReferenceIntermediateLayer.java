@@ -75,6 +75,7 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
         if (!hasCached
             && (currentPointIndex < tvList.size() - 1
                 || LayerCacheUtils.cachePoint(dataType, parentLayerPointReader, tvList))) {
+          // TODO: overflow
           ++currentPointIndex;
           hasCached = true;
         }
@@ -86,6 +87,7 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
       public void readyForNext() {
         hasCached = false;
 
+        // TODO: overflow
         safetyPile.moveForwardTo(currentPointIndex + 1);
         tvList.setEvictionUpperBound(safetyLine.getSafetyLine());
       }
@@ -149,6 +151,7 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
         if (!hasCached
             && ((currentRowIndex < tvList.size() - 1)
                 || LayerCacheUtils.cachePoint(dataType, parentLayerPointReader, tvList))) {
+          // TODO: overflow
           row.seek(++currentRowIndex);
           hasCached = true;
         }
@@ -160,6 +163,7 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
       public void readyForNext() {
         hasCached = false;
 
+        // TODO: overflow
         safetyPile.moveForwardTo(currentRowIndex + 1);
         tvList.setEvictionUpperBound(safetyLine.getSafetyLine());
       }
@@ -195,6 +199,7 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
           new ElasticSerializableTVListBackedSingleColumnWindow(tvList);
 
       private boolean hasCached = false;
+      private boolean hasNext = false;
       private int beginIndex = -slidingStep;
 
       @Override
@@ -203,17 +208,31 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
           return true;
         }
 
-        beginIndex += slidingStep;
-        int endIndex = beginIndex + windowSize;
+        if (!hasNext) {
+          return false;
+        }
+
+        int endIndex;
+        try {
+          beginIndex = Math.addExact(beginIndex, slidingStep);
+          endIndex = Math.addExact(beginIndex, windowSize);
+        } catch (ArithmeticException e) {
+          // The query timeout and memory limit may be exceeded in advance of this limit.
+          throw new QueryProcessException(
+              "The maximum number of rows can be processed in query is exceeded");
+        }
 
         int pointsToBeCollected = endIndex - tvList.size();
         if (0 < pointsToBeCollected) {
-          LayerCacheUtils.cachePoints(
-              dataType, parentLayerPointReader, tvList, pointsToBeCollected);
+          int pointsCollected =
+              LayerCacheUtils.cachePoints(
+                  dataType, parentLayerPointReader, tvList, pointsToBeCollected);
           if (tvList.size() <= beginIndex) {
             return false;
           }
-
+          if (pointsCollected < pointsToBeCollected) {
+            hasNext = false;
+          }
           window.seek(beginIndex, tvList.size());
         } else {
           window.seek(beginIndex, endIndex);
@@ -283,6 +302,7 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
           return false;
         }
 
+        // TODO: overflow
         long nextWindowTimeEnd = Math.min(nextWindowTimeBegin + timeInterval, displayWindowEnd);
         while (tvList.getTime(tvList.size() - 1) < nextWindowTimeEnd) {
           if (!LayerCacheUtils.cachePoint(dataType, parentLayerPointReader, tvList)) {
@@ -316,6 +336,7 @@ public class SingleInputColumnMultiReferenceIntermediateLayer extends Intermedia
       @Override
       public void readyForNext() {
         hasCached = false;
+        // TODO: overflow
         nextWindowTimeBegin += slidingStep;
 
         safetyPile.moveForwardTo(nextIndexBegin + 1);

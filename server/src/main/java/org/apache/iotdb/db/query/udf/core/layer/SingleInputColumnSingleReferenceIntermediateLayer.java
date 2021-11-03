@@ -113,6 +113,7 @@ public class SingleInputColumnSingleReferenceIntermediateLayer extends Intermedi
           new ElasticSerializableTVListBackedSingleColumnWindow(tvList);
 
       private boolean hasCached = false;
+      private boolean hasNext = true;
       private int beginIndex = -slidingStep;
 
       @Override
@@ -120,18 +121,31 @@ public class SingleInputColumnSingleReferenceIntermediateLayer extends Intermedi
         if (hasCached) {
           return true;
         }
+        if (!hasNext) {
+          return false;
+        }
 
-        beginIndex += slidingStep;
-        int endIndex = beginIndex + windowSize;
+        int endIndex;
+        try {
+          beginIndex = Math.addExact(beginIndex, slidingStep);
+          endIndex = Math.addExact(beginIndex, windowSize);
+        } catch (ArithmeticException e) {
+          // The query timeout and memory limit may be exceeded in advance of this limit.
+          throw new QueryProcessException(
+              "The maximum number of rows can be processed in query is exceeded");
+        }
 
         int pointsToBeCollected = endIndex - tvList.size();
         if (0 < pointsToBeCollected) {
-          LayerCacheUtils.cachePoints(
-              dataType, parentLayerPointReader, tvList, pointsToBeCollected);
+          int pointsCollected =
+              LayerCacheUtils.cachePoints(
+                  dataType, parentLayerPointReader, tvList, pointsToBeCollected);
           if (tvList.size() <= beginIndex) {
             return false;
           }
-
+          if (pointsCollected < pointsToBeCollected) {
+            hasNext = false;
+          }
           window.seek(beginIndex, tvList.size());
         } else {
           window.seek(beginIndex, endIndex);
@@ -200,6 +214,7 @@ public class SingleInputColumnSingleReferenceIntermediateLayer extends Intermedi
           return false;
         }
 
+        // TODO: overflow
         long nextWindowTimeEnd = Math.min(nextWindowTimeBegin + timeInterval, displayWindowEnd);
         while (tvList.getTime(tvList.size() - 1) < nextWindowTimeEnd) {
           if (!LayerCacheUtils.cachePoint(dataType, parentLayerPointReader, tvList)) {
@@ -233,6 +248,7 @@ public class SingleInputColumnSingleReferenceIntermediateLayer extends Intermedi
       @Override
       public void readyForNext() {
         hasCached = false;
+        // TODO: overflow
         nextWindowTimeBegin += slidingStep;
       }
 
